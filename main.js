@@ -6,6 +6,8 @@ const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 var scraping = false;
+const quoteChannelID = 1234;
+const adminChannelID = 5678;
 
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
@@ -13,40 +15,45 @@ client.once('ready', () => {
 
 
 
-//First time initialization (scrapes the entire channel for usable quotes)
+//Scrape command to scrape the entire channel for usable quotes
 client.on('messageCreate', async (message) => {
     scraping = true;
-    if (message.content.startsWith('!scrape')) {
-        const channelId = message.channel.id;
+    if (message.content.startsWith('!scrape') && 
+        message.channelId == adminChannelID) {
+        const channelId = quoteChannelID;
         const messages = await scrapeMessages(channelId);
 
         //Message save
         saveScrapedMessagesToFile(messages, 'messages.json');
+
+        message.reply("Successfully scraped " + messages.length + " messages");
     }
     scraping = false;
 });
 
+//Admin/Test commands
 client.on('messageCreate', (message) => {
-    //If we are in the process of scraping, we just ignore this (because scraping requires async)
-    if (scraping) return;
+    //If we are in the process of scraping, we just ignore this 
     //Ignore messages from the bot itself
-    if (message.author.bot) return;
-
-    //Parse a new quote
-    if(message.content.indexOf("!")!==0){
-        if (message.content.match(new RegExp("\"", "g")).length >= 2) {
-            jsonFile.push({content: message.content, id: message.id});
-            saveMessagesToFile(jsonFile, "messages.json");
-            //console.log(`${message.content}\n${message.id}`);
-        }
-    }
+    //ignore messages not made in the designated admin channel
+    //ignore messages not made by admins
+    if (scraping ||
+        message.author.bot ||
+        message.channelId != adminChannelID
+    ) return;
 
     //Adds a message to the quotes blacklist
-    if (message.content === "!IgnoreMOTD" && message.reference!==null){
-        //console.log(message);
-        blacklistFile.push(message.reference.messageId);
+    if (message.content.startsWith("!IgnoreMOTD")){
+        
+        let cont = message.content.split("!IgnoreMOTD ")[1];
+        if (/[a-z]/i.test(cont)){
+            message.reply("Invalid message ID");
+            return;
+        } 
+        blacklistFile.push(cont);
         saveMessagesToFile(blacklistFile, "blacklist.json");
-        blacklistAMessage(message.reference.messageId);
+        blacklistAMessage(cont);
+        message.reply("Successfully blacklisted messageID: \n```" + cont+"```");
     }
     
     //Fetch a random quote from the list (Test command)
@@ -57,6 +64,26 @@ client.on('messageCreate', (message) => {
     //PURELY FOR API TESTING
     if(message.content === "!test"){
         message.reply(message);
+    }
+});
+
+//parses new incoming quotes
+client.on('messageCreate', (message) => {
+    //If we are in the process of scraping, we just ignore this 
+    //Ignore messages from the bot itself
+    //ignore messages not made in the designated quotes channel
+    if (scraping ||
+        message.author.bot ||
+        message.channelId != quoteChannelID
+    ) return;
+
+    //Parse a new quote
+    if(message.content.indexOf("!")!==0){
+        if (message.content.match(new RegExp("\"", "g")).length >= 2) {
+            jsonFile.push({content: message.content, id: message.id});
+            saveMessagesToFile(jsonFile, "messages.json");
+            //console.log(`${message.content}\n${message.id}`);
+        }
     }
 });
 
@@ -138,5 +165,5 @@ function saveMessagesToFile(messages, fileName){
 }
 
 // Log in to Discord with bot token
-client.login(process.env.BOT);
+client.login();
 
